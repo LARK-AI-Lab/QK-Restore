@@ -265,9 +265,13 @@ HypeNet requires a custom vLLM registration to serve with `vllm serve` or use wi
 ## Citation
 
 ```bibtex
-@article{qk-restore-2026,
-  title   = {QK-RESTORE: Zero-Training Recall Recovery for Hybrid Linear-Attention Models},
-  author  = {Xinyu Zhou and others},
-  year    = {2026},
+@misc{zhou2026attentionamnesiahybridllms,
+      title={Attention Amnesia in Hybrid LLMs: When CoT Fine-Tuning Breaks Long-Range Recall, and How to Fix It}, 
+      author={Xinyu Zhou and Boyu Zhu and Yi Xu and Zhiwei Li and Yingfa Chen and Huiming Wang and Zhijiang Guo},
+      year={2026},
+      eprint={2606.11052},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2606.11052}, 
 }
 ```
