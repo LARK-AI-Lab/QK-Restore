@@ -1,452 +1,230 @@
-<!DOCTYPE html>
-<html>
-
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="description"
-    content="Attention Amnesia in Hybrid LLMs: When CoT Fine-Tuning Breaks Long-Range Recall, and How to Fix It" />
-  <meta name="keywords"
-    content="QK-Restore, Hybrid LLM, Linear Attention, Long Context, NIAH, Chain-of-Thought, SFT, Retrieval, EMNLP 2026" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>QK-Restore</title>
-
-  <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro" rel="stylesheet" />
-
-  <link rel="stylesheet" href="./css/bulma.min.css" />
-  <link rel="stylesheet" href="./css/bulma-carousel.min.css" />
-  <link rel="stylesheet" href="./css/bulma-slider.min.css" />
-  <link rel="stylesheet" href="./css/fontawesome.all.min.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css" />
-  <link rel="stylesheet" href="./css/index.css" />
-  <link rel="stylesheet" href="./css/qk.css" />
-  <link rel="icon" href="./images/lark_logo.png" />
-
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-  <script defer src="./js/fontawesome.all.min.js"></script>
-  <script src="./js/bulma-carousel.min.js"></script>
-  <script src="./js/bulma-slider.min.js"></script>
-  <script src="./js/index.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#faf9f5">
+  <title>QK-Restore &middot; Attention Amnesia in Hybrid LLMs</title>
+  <meta name="description" content="CoT fine-tuning breaks long-range recall in hybrid LLMs. QK-Restore copies the pre-SFT query and key weights back into the retained softmax-attention layers, recovering recall without any training.">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Attention Amnesia in Hybrid LLMs">
+  <meta property="og:description" content="When CoT fine-tuning breaks long-range recall, and how to fix it with zero training.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Attention Amnesia in Hybrid LLMs">
+  <meta name="twitter:description" content="Restore pre-SFT routing. Keep post-SFT adaptation.">
+  <link rel="icon" href="static/images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="static/css/style.css">
+  <link rel="stylesheet" href="static/css/qk.css">
 </head>
-
 <body>
+  <a class="skip-link" href="#problem">Skip to the article</a>
+  <header class="site-header">
+    <a class="wordmark" href="#top" aria-label="QK-Restore, back to top">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="1" y="1" width="6" height="6" rx="1.2" fill="#527a6b"/>
+        <rect x="9" y="1" width="6" height="6" rx="1.2" fill="#527a6b"/>
+        <rect x="17" y="1" width="6" height="6" rx="1.2" fill="#ead3bd"/>
+        <rect x="1" y="9" width="6" height="6" rx="1.2" fill="#7a9e90"/>
+        <rect x="9" y="9" width="6" height="6" rx="1.2" fill="#7a9e90"/>
+        <rect x="17" y="9" width="6" height="6" rx="1.2" fill="#dba081"/>
+        <rect x="1" y="17" width="6" height="6" rx="1.2" fill="#527a6b"/>
+        <rect x="9" y="17" width="6" height="6" rx="1.2" fill="#527a6b"/>
+        <rect x="17" y="17" width="6" height="6" rx="1.2" fill="#c66a49"/>
+      </svg>QK-Restore
+    </a>
+    <nav aria-label="Article navigation"><a href="#problem">Problem</a><a href="#cause">Cause</a><a href="#method">Method</a><a href="#results">Results</a></nav>
+  </header>
 
-  <section class="hero">
-    <div class="hero-body">
-      <div class="container is-max-desktop">
-        <div class="columns is-centered">
-          <div class="column has-text-centered">
-            <h1 class="title is-1 publication-title">
-              &#128273;Attention Amnesia in Hybrid LLMs: When CoT Fine-Tuning Breaks Long-Range Recall, and How to Fix
-              It
-            </h1>
-            <div class="is-size-5 publication-authors">
-              <span class="author-block">
-                <a href="https://blackzxy.github.io/">Xinyu Zhou</a><sup>1,*</sup>,
-              </span>
-              <span class="author-block">
-                Boyu Zhu<sup>2,*</sup>,
-              </span>
-              <span class="author-block">
-                Yi Xu<sup>3</sup>,
-              </span>
-              <span class="author-block">
-                Zhiwei Li<sup>1</sup>,
-              </span>
-              <span class="author-block">
-                Yingfa Chen<sup>4</sup>,
-              </span>
-              <span class="author-block">
-                Huiming Wang<sup>5,&dagger;</sup>,
-              </span>
-              <span class="author-block">
-                <a href="https://cartus.github.io/">Zhijiang Guo</a><sup>1,&dagger;</sup>
-              </span>
-            </div>
+  <main id="top">
+    <section class="hero prose" aria-labelledby="paper-title">
+      <p class="eyebrow">Long-context recall in hybrid language models</p>
+      <h1 id="paper-title">Attention Amnesia in Hybrid LLMs</h1>
+      <p class="paper-subtitle">When CoT Fine-Tuning Breaks Long-Range Recall,<br class="desktop-break"> and How to Fix It</p>
+      <div class="paper-credits">
+        <p class="authors"><a href="https://blackzxy.github.io/">Xinyu Zhou</a>*, Boyu Zhu*, Yi Xu, Zhiwei Li, Yingfa Chen, Huiming Wang&dagger;, <a href="https://cartus.github.io/">Zhijiang Guo</a>&dagger;</p>
+        <p class="affiliations"><a href="https://lark-lab-hkustgz.github.io/">LARK, HKUST(GZ)</a> &middot; UCL &middot; Mistral AI &middot; Tsinghua University &middot; SUTD &nbsp;|&nbsp; EMNLP 2026</p>
+      </div>
+      <div class="resource-links" aria-label="Paper resources">
+        <a href="https://arxiv.org/abs/2606.11052"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5h7l3 3v12H5zM12 2.5V6h3M8 10h4M8 13h4"/></svg>arXiv</a>
+        <a href="https://github.com/LARK-AI-Lab/QK-Restore"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 5-5 5 5 5m8-10 5 5-5 5m-2-12-4 14"/></svg>Code</a>
+      </div>
+      <p class="hero-summary">Fine-tuning teaches a hybrid model to reason.<br>It also teaches it to forget.</p>
+    </section>
 
-            <div class="is-size-5 publication-authors">
-              <span class="author-block"><sup>1</sup><a href="https://lark-lab-hkustgz.github.io/">LARK,
-                  HKUST(GZ)</a></span>
-              <span class="author-block"><sup>2</sup>UCL</span>
-              <span class="author-block"><sup>3</sup>Mistral AI</span>
-              <span class="author-block"><sup>4</sup>Tsinghua University</span>
-              <span class="author-block"><sup>5</sup>SUTD</span>
-            </div>
+    <section id="problem" class="article-section" aria-labelledby="problem-title">
+      <div class="prose">
+        <p class="section-kicker">01 / The problem</p>
+        <h2 id="problem-title">Reasoning improves. Recall collapses.</h2>
+        <p>Hybrid language models replace most softmax-attention layers with linear-attention ones and keep only a handful of full-attention layers. <span class="assumption-underline">Those few retained layers carry the model&rsquo;s global recall</span> &mdash; the ability to find a fact that appeared a hundred thousand tokens ago.</p>
+        <p>Chain-of-thought supervised fine-tuning is the standard way to make such a model reason. It works: MATH500 accuracy on HypeNet-5B rises from 4.7 to 49.3. But measured on needle-in-a-haystack retrieval, the same fine-tuning is quietly destructive. HypeNet-9B falls from <strong>67.2%</strong> to <strong>9.4%</strong> on NIAH-Single-2 at a 256K context.</p>
+      </div>
+      <figure class="figure-wide paper-figure">
+        <div class="figure-heading"><span class="figure-label">HypeNet-2B &middot; pre-train vs. CoT-SFT</span><span class="figure-note">NIAH accuracy, 32K&ndash;256K</span></div>
+        <div class="paper-image"><img src="static/images/recall-degradation.png" alt="Two line charts. On NIAH-Single-2 and NIAH-Single-3, the CoT-SFT model tracks the pre-trained model at 32K but falls away as context grows, losing about 40 and 23 points at the longest contexts." width="2284" height="934"></div>
+        <figcaption>The loss grows with task difficulty and with context length. The models still read; they stop retrieving. (Paper Fig. 1.)</figcaption>
+      </figure>
+      <div class="prose">
+        <blockquote>The post-training objective can overwrite the routing learned during pre-training.</blockquote>
+      </div>
+    </section>
 
-            <div class="is-size-6 publication-authors">
-              <span class="author-block">* Equal Contribution,&nbsp;&dagger; Corresponding Author</span>
-            </div>
+    <section id="cause" class="article-section" aria-labelledby="cause-title">
+      <div class="prose">
+        <p class="section-kicker">02 / The cause</p>
+        <h2 id="cause-title">Local gradients, distant memories.</h2>
+        <p>Let <em>g</em>(&tau;) be the average absolute loss gradient on attention logits &mdash; over positions, retained softmax layers and heads &mdash; for pairs of tokens &tau; apart. Under a stationary, reversible ergodic CoT-Markov model with bounded output gradients, it obeys an exponentially decaying bound:</p>
+        <div class="equation" aria-label="g of tau is at most C prime times e to the minus tau over W, which equals C prime times rho to the tau, with rho between zero and one">
+          <span><em>g</em>(&tau;)</span><span>&le;</span><span class="equation-global"><em>C&prime;</em>e<sup>&minus;&tau;/<em>W</em></sup></span><span>=</span><span class="equation-local"><em>C&prime;&rho;</em><sup>&tau;</sup></span>
+        </div>
+        <p>The fitted decay window is short in absolute terms: <strong><em>W</em> &asymp; 41 tokens</strong> for the CoT post-SFT model, against &asymp; 48 for the pre-SFT one. A signal that vanishes within tens of tokens cannot supervise routing that has to reach across hundreds of thousands.</p>
+      </div>
+      <figure class="figure-wide paper-figure">
+        <div class="figure-heading"><span class="figure-label">HypeNet-2B &middot; exponential fits</span><span class="figure-note">Token autocorrelation and attention-gradient magnitude</span></div>
+        <div class="paper-image"><img src="static/images/gradient-decay.png" alt="Two log-scale scatter plots with fitted lines. Token autocorrelation decays with distance for both CoT and general text; attention-gradient magnitude decays with distance for both the post-SFT and pre-SFT models." width="2734" height="1084"></div>
+        <figcaption>Both the token autocorrelation of the training data and the measured attention-gradient magnitudes are well fitted by exponential decay. (Paper Fig. 3.)</figcaption>
+      </figure>
+    </section>
 
-            <div class="is-size-5 publication-authors">
-              <span class="author-block publication-venue">EMNLP 2026</span>
-            </div>
+    <section id="method" class="article-section" aria-labelledby="method-title">
+      <div class="prose">
+        <p class="section-kicker">03 / The method</p>
+        <h2 id="method-title">Put the routing back.</h2>
+        <p>Q and K decide <em>where</em> attention goes. V and O decide <em>what</em> it does with the tokens it attends to. If fine-tuning damages routing while improving processing, the two can be separated after the fact &mdash; the useful half of the update is kept, and the harmful half is reverted.</p>
+      </div>
+      <figure class="figure-wide paper-figure">
+        <div class="figure-heading"><span class="figure-label">QK-Restore</span><span class="figure-note">Restore pre-SFT routing &middot; keep post-SFT adaptation</span></div>
+        <div class="paper-image"><img src="static/images/method-overview.jpg" alt="Schematic: in the post-SFT hybrid model, the query and key projections of the retained softmax-attention layers are replaced with their pre-SFT values while the value projection and the rest of the network stay post-SFT. A bar chart shows math reasoning retained and long-context recall restored." width="2200" height="790"></div>
+        <figcaption>Only Q and K in the retained softmax-attention layers are restored; every other weight stays post-SFT. (Paper Fig. 2; panel C is schematic.)</figcaption>
+      </figure>
+      <div class="prose">
+        <ol class="recipe">
+          <li>Start from the <strong>post-SFT</strong> checkpoint.</li>
+          <li>Copy <strong>W<sup>Q</sup> and W<sup>K</sup></strong> from the pre-SFT checkpoint into every retained softmax-attention layer.</li>
+          <li>Keep W<sup>V</sup>, W<sup>O</sup>, the linear-attention layers and the FFNs unchanged.</li>
+        </ol>
+        <div class="cost-row">
+          <div><span class="cost-number">0</span><span class="cost-label">training steps</span></div>
+          <div><span class="cost-number">0</span><span class="cost-label">extra data</span></div>
+          <div><span class="cost-number">1</span><span class="cost-label">matched pre-SFT checkpoint</span></div>
+        </div>
+        <p>The same rule is applied to every retained softmax layer and head &mdash; there is no per-layer or per-head selection, and no hyperparameter to tune.</p>
+      </div>
+    </section>
 
-            <div class="is-size-6 publication-authors">
-              <span class="author-block">
-                Corresponding to:
-                <a href="mailto:zhijiangguo@hkust-gz.edu.cn">zhijiangguo@hkust-gz.edu.cn</a>,
-                <a href="mailto:huiming_wang@mymail.sutd.edu.sg">huiming_wang@mymail.sutd.edu.sg</a>
-              </span>
-            </div>
-
-            <div class="column has-text-centered">
-              <div class="publication-links">
-                <!-- Paper -->
-                <span class="link-block">
-                  <a href="https://arxiv.org/abs/2606.11052" class="external-link button is-normal is-rounded is-dark">
-                    <span class="icon">
-                      <i class="fas fa-file-pdf"></i>
-                    </span>
-                    <span>Paper</span>
-                  </a>
-                </span>
-                <!-- Code -->
-                <span class="link-block">
-                  <a href="https://github.com/LARK-AI-Lab/QK-Restore"
-                    class="external-link button is-normal is-rounded is-dark">
-                    <span class="icon">
-                      <i class="fab fa-github"></i>
-                    </span>
-                    <span>Code</span>
-                  </a>
-                </span>
-              </div>
-            </div>
-          </div>
+    <section id="results" class="article-section" aria-labelledby="results-title">
+      <div class="prose">
+        <p class="section-kicker">04 / The evidence</p>
+        <h2 id="results-title">Recall comes back.<br>Reasoning mostly stays.</h2>
+        <p>We evaluate four distilled hybrid models &mdash; Jet-Nemotron-2B and HypeNet-2B/5B/9B &mdash; on needle-in-a-haystack retrieval from 32K to 256K tokens, and on MATH500, GSM8K and AIME24 for reasoning. CoT-SFT uses Miromind.</p>
+        <div class="result-summary" aria-label="Headline results">
+          <div><span class="result-number">+23.2<span>pts</span></span><span class="result-description">NIAH-Single-3 at 128K<br>HypeNet-2B, over CoT-SFT</span></div>
+          <div><span class="result-number">+19.8<span>pts</span></span><span class="result-description">NIAH-Single-3 at 256K<br>HypeNet-9B, over CoT-SFT</span></div>
+          <div><span class="result-number">&minus;0.6<span>pts</span></span><span class="result-description">MATH500 Avg@16<br>HypeNet-5B, the cost</span></div>
         </div>
       </div>
-    </div>
-  </section>
-
-  <!-- News -->
-  <section class="section">
-    <div class="container is-max-desktop">
-      <div class="columns is-centered">
-        <div class="column is-11 has-text-centered">
-          <h2 class="title is-3 section-title">News</h2>
-          <div class="content has-text-justified">
-            <p>
-              &#127881; [2026-09] Our paper has been accepted to <strong>EMNLP 2026</strong>!
-            </p>
-            <p>
-              &#128196; [2026-06] We have released the <a href="https://arxiv.org/abs/2606.11052">paper</a> on arXiv and
-              the <a href="https://github.com/LARK-AI-Lab/QK-Restore">code</a> on GitHub!
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Introduction -->
-  <section class="section">
-    <div class="container is-max-desktop">
-      <div class="columns is-centered">
-        <div class="column is-11 has-text-centered">
-          <h2 class="title is-3 section-title">Introduction</h2>
-          <div class="content has-text-justified">
-            <p>
-              Hybrid language models replace most softmax-attention layers with linear-attention ones and keep only a
-              few full-attention layers, which carry the model&rsquo;s global recall. We find that
-              <strong>chain-of-thought supervised fine-tuning damages exactly those layers</strong>: reasoning accuracy
-              goes up, but long-range retrieval collapses &mdash; HypeNet-9B drops from <strong>67.2%</strong> to
-              <strong>9.4%</strong> on NIAH-Single-2 at 256K context after CoT-SFT.
-            </p>
-            <p>
-              We trace the failure to <strong>gradient locality</strong>: under a stationary, reversible ergodic
-              CoT-Markov model, the average magnitude of the loss gradient on attention logits decays exponentially with
-              the distance between tokens, so the fine-tuning signal rewrites short-range routing and leaves
-              long-range routing unsupervised.
-            </p>
-            <p>
-              This suggests a remedy that needs no training at all. <strong>QK-Restore</strong> copies
-              W<sup>Q</sup> and W<sup>K</sup> from the pre-SFT checkpoint back into every retained softmax-attention
-              layer, and keeps W<sup>V</sup>, W<sup>O</sup>, the linear-attention layers and the FFNs at their post-SFT
-              values &mdash; routing is restored while the adaptation that produced the reasoning gains is preserved.
-              Across Jet-Nemotron-2B and HypeNet-2B/5B/9B, QK-Restore recovers up to <strong>+23.2</strong> points of
-              NIAH-Single-3 recall at 128K and <strong>+19.8</strong> points at 256K over CoT-SFT. Most of the reasoning
-              gain survives: Avg@16 on MATH500 and GSM8K stays within <strong>0.7</strong> points of CoT-SFT on three of
-              the four models (HypeNet-9B gives up 2.2 and 3.0 points), and Maj@16 often improves. It requires <strong>zero training, no data and no optimization</strong> &mdash;
-              only the matched pre-SFT checkpoint.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Overview -->
-  <section class="section">
-    <div class="container is-max-desktop">
-      <div class="columns is-centered">
-        <div class="column is-11 has-text-centered">
-          <h2 class="title is-3 section-title">QK-Restore</h2>
-          <div class="content has-text-justified">
-            <p class="has-text-centered">
-              <img src="./images/method_overview.jpg" alt="QK-Restore overview" class="teaser-image wide-image" />
-            </p>
-            <p>
-              Q and K decide <em>where</em> attention goes; V and O decide <em>what</em> it does with the tokens it
-              attends to. CoT-SFT drifts the routing, so QK-Restore puts the routing back and leaves everything else
-              alone:
-            </p>
-            <ol class="recipe">
-              <li>Start from the <strong>post-SFT</strong> checkpoint.</li>
-              <li>Copy <strong>W<sup>Q</sup> and W<sup>K</sup></strong> from the pre-SFT checkpoint into every
-                softmax-attention layer.</li>
-              <li>Keep W<sup>V</sup>, W<sup>O</sup>, linear-attention and FFN weights unchanged.</li>
-            </ol>
-            <p>
-              The whole method is a weight transplant &mdash; no extra data, no optimization steps, no hyperparameters
-              beyond the choice of layers (we restore all retained softmax layers and heads with the same rule).
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Problem -->
-  <section class="section">
-    <div class="container is-max-desktop">
-      <div class="columns is-centered">
-        <div class="column is-11 has-text-centered">
-          <h2 class="title is-3 section-title">Reasoning Improves, Recall Falls</h2>
-          <div class="content has-text-justified">
-            <p class="has-text-centered">
-              <img src="./images/recall_degradation.png" alt="Recall degradation after CoT-SFT"
-                class="teaser-image wide-image" />
-            </p>
-            <p>
-              The loss grows with task difficulty and with context length: on HypeNet-2B, CoT-SFT costs about
-              <strong>40</strong> points of NIAH-Single-2 accuracy and <strong>23</strong> points of NIAH-Single-3
-              accuracy at long contexts. The models still read; they stop retrieving.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Theory -->
-  <section class="section">
-    <div class="container is-max-desktop">
-      <div class="columns is-centered">
-        <div class="column is-11 has-text-centered">
-          <h2 class="title is-3 section-title">Why: Local Gradients, Distant Memories</h2>
-          <div class="content has-text-justified">
-            <p>
-              Let <em>g</em>(&tau;) be the average absolute loss gradient on attention logits, over positions, retained
-              softmax layers and heads, for token pairs &tau; apart. Under the paper&rsquo;s assumptions it obeys an
-              exponentially decaying bound:
-            </p>
-            <span class="bound">
-              <em>g</em>(&tau;) &le; <em>C&prime;</em>e<sup>&minus;&tau;/<em>W</em></sup> =
-              <em>C&prime;&rho;</em><sup>&tau;</sup>, &nbsp; 0 &lt; <em>&rho;</em> &lt; 1
-            </span>
-            <p class="has-text-centered">
-              <img src="./images/gradient_decay.png" alt="Token autocorrelation and attention gradient decay"
-                class="teaser-image wide-image" />
-            </p>
-            <p>
-              Both the token autocorrelation of the training data and the measured attention-gradient magnitudes are well
-              fitted by exponential decay. The gradient window is short in absolute terms &mdash; <em>W</em> &asymp; 41
-              tokens for the CoT post-SFT model and &asymp; 48 tokens for the pre-SFT model &mdash; so the fine-tuning
-              signal effectively supervises short-range routing only, and long-range routing is left to drift.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Main results -->
-  <section class="section">
-    <div class="container is-max-widescreen">
-      <div class="columns is-centered">
-        <div class="column is-12 has-text-centered">
-          <h2 class="title is-3 section-title">Main Results</h2>
-          <div class="content has-text-justified">
-            <p>
-              Accuracy (%) after CoT-SFT on Miromind. NIAH-Single-1 is saturated (&ge; 97.2 for every model and method)
-              and is omitted. <strong>Bold</strong> marks the best value within each model block; green rows are
-              QK-Restore; superscripts on NIAH-Single-3 give the change against +CoT-SFT in points.
-            </p>
-          </div>
-          <div class="table-scroll">
-            <table class="qk-table qk-table-wide">
-              <thead>
-                <tr>
-                  <th rowspan="2">Model</th>
-                  <th rowspan="2">Method</th>
-                  <th colspan="4" class="gsep">NIAH-Single-2</th>
-                  <th colspan="4" class="gsep">NIAH-Single-3</th>
-                  <th colspan="2" class="gsep">MATH500</th>
-                  <th colspan="2" class="gsep">GSM8K</th>
-                  <th colspan="2" class="gsep">AIME24</th>
-                </tr>
-                <tr class="sub-row">
-                  <th class="gsep">32K</th><th>64K</th><th>128K</th><th>256K</th>
-                  <th class="gsep">32K</th><th>64K</th><th>128K</th><th>256K</th>
-                  <th class="gsep">Avg@16</th><th>Maj@16</th>
-                  <th class="gsep">Avg@16</th><th>Maj@16</th>
-                  <th class="gsep">Avg@16</th><th>Maj@16</th>
-                </tr>
-              </thead>
+      <figure class="figure-wide paper-figure wide-table">
+        <div class="figure-heading"><span class="figure-label">After CoT-SFT &middot; accuracy (%)</span><span class="figure-note">NIAH-Single-1 omitted: saturated at &ge; 97.2 everywhere</span></div>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Main results table; scroll horizontally on narrow screens">
+          <table>
+            <thead>
+              <tr><th scope="col" rowspan="2">Method</th><th scope="colgroup" colspan="4">NIAH-Single-2</th><th scope="colgroup" colspan="4">NIAH-Single-3</th><th scope="colgroup" colspan="2">MATH500</th><th scope="colgroup" colspan="2">GSM8K</th><th scope="colgroup" colspan="2">AIME24</th></tr>
+              <tr><th scope="col">32K</th><th scope="col">64K</th><th scope="col">128K</th><th scope="col">256K</th><th scope="col">32K</th><th scope="col">64K</th><th scope="col">128K</th><th scope="col">256K</th><th scope="col">Avg@16</th><th scope="col">Maj@16</th><th scope="col">Avg@16</th><th scope="col">Maj@16</th><th scope="col">Avg@16</th><th scope="col">Maj@16</th></tr>
+            </thead>
             <tbody>
-             <tr><th rowspan="3" class="model-cell">Jet-Nemotron-2B</th><td class="method-cell">Pre-SFT</td><td class="gsep best">95.6</td><td class="best">91.0</td><td class="best">61.0</td><td class="best">22.2</td><td class="gsep best">57.2</td><td class="best">48.0</td><td class="best">73.6</td><td class="best">40.6</td><td class="gsep">37.5</td><td>64.0</td><td class="gsep">52.6</td><td>84.3</td><td class="gsep">0.8</td><td>3.3</td></tr>
-             <tr><td class="method-cell">+CoT-SFT</td><td class="gsep">57.8</td><td>28.4</td><td>21.0</td><td>11.6</td><td class="gsep">34.4</td><td>33.6</td><td>67.2</td><td>27.8</td><td class="gsep best">49.4</td><td class="best">70.6</td><td class="gsep best">71.9</td><td>88.0</td><td class="gsep">1.5</td><td>3.3</td></tr>
-             <tr class="ours"><td class="method-cell">+QK-Restore</td><td class="gsep">64.6</td><td>34.0</td><td>22.0</td><td>7.6</td><td class="gsep">41.8<sup class="delta up">7.4&uarr;</sup></td><td>39.0<sup class="delta up">5.4&uarr;</sup></td><td>64.4<sup class="delta down">2.8&darr;</sup></td><td>34.0<sup class="delta up">6.2&uarr;</sup></td><td class="gsep">49.0</td><td>69.4</td><td class="gsep">71.2</td><td class="best">88.6</td><td class="gsep best">1.9</td><td class="best">6.7</td></tr>
+              <tr class="table-group"><td colspan="15">Jet-Nemotron-2B</td></tr>
+              <tr><th scope="row">Pre-SFT</th><td><strong>95.6</strong></td><td><strong>91.0</strong></td><td><strong>61.0</strong></td><td><strong>22.2</strong></td><td><strong>57.2</strong></td><td><strong>48.0</strong></td><td><strong>73.6</strong></td><td><strong>40.6</strong></td><td>37.5</td><td>64.0</td><td>52.6</td><td>84.3</td><td>0.8</td><td>3.3</td></tr>
+              <tr><th scope="row">+ CoT-SFT</th><td>57.8</td><td>28.4</td><td>21.0</td><td>11.6</td><td>34.4</td><td>33.6</td><td>67.2</td><td>27.8</td><td><strong>49.4</strong></td><td><strong>70.6</strong></td><td><strong>71.9</strong></td><td>88.0</td><td>1.5</td><td>3.3</td></tr>
+              <tr class="ours"><th scope="row">QK-Restore <span>ours</span></th><td>64.6</td><td>34.0</td><td>22.0</td><td>7.6</td><td>41.8<span class="delta up">7.4&uarr;</span></td><td>39.0<span class="delta up">5.4&uarr;</span></td><td>64.4<span class="delta down">2.8&darr;</span></td><td>34.0<span class="delta up">6.2&uarr;</span></td><td>49.0</td><td>69.4</td><td>71.2</td><td><strong>88.6</strong></td><td><strong>1.9</strong></td><td><strong>6.7</strong></td></tr>
+              <tr class="table-group"><td colspan="15">HypeNet-2B</td></tr>
+              <tr><th scope="row">Pre-SFT</th><td>75.8</td><td><strong>94.0</strong></td><td><strong>88.0</strong></td><td><strong>56.2</strong></td><td>48.8</td><td>34.8</td><td>30.4</td><td>23.4</td><td>4.7</td><td>25.4</td><td>2.2</td><td>20.0</td><td>0.0</td><td>0.0</td></tr>
+              <tr><th scope="row">+ CoT-SFT</th><td>82.2</td><td>81.8</td><td>48.4</td><td>41.8</td><td>47.4</td><td>32.6</td><td>7.6</td><td>10.6</td><td><strong>34.4</strong></td><td>55.2</td><td>40.8</td><td>68.1</td><td>0.0</td><td>0.0</td></tr>
+              <tr class="ours"><th scope="row">QK-Restore <span>ours</span></th><td><strong>97.6</strong></td><td>91.2</td><td>83.2</td><td>40.8</td><td><strong>56.2</strong><span class="delta up">8.8&uarr;</span></td><td><strong>52.8</strong><span class="delta up">20.2&uarr;</span></td><td><strong>30.8</strong><span class="delta up">23.2&uarr;</span></td><td><strong>30.2</strong><span class="delta up">19.6&uarr;</span></td><td>33.7</td><td><strong>56.6</strong></td><td><strong>41.2</strong></td><td><strong>69.0</strong></td><td><strong>0.2</strong></td><td><strong>3.3</strong></td></tr>
+              <tr class="table-group"><td colspan="15">HypeNet-5B</td></tr>
+              <tr><th scope="row">Pre-SFT</th><td>99.4</td><td>99.8</td><td><strong>97.0</strong></td><td><strong>93.4</strong></td><td>95.0</td><td>94.2</td><td>87.2</td><td>75.2</td><td>4.7</td><td>33.8</td><td>4.1</td><td>39.5</td><td>0.0</td><td>0.0</td></tr>
+              <tr><th scope="row">+ CoT-SFT</th><td>98.8</td><td>100</td><td>91.4</td><td>83.6</td><td>96.6</td><td><strong>96.6</strong></td><td><strong>90.6</strong></td><td>65.4</td><td><strong>49.3</strong></td><td>67.0</td><td><strong>61.3</strong></td><td>81.4</td><td><strong>0.6</strong></td><td>0.0</td></tr>
+              <tr class="ours"><th scope="row">QK-Restore <span>ours</span></th><td><strong>99.8</strong></td><td><strong>100</strong></td><td>96.8</td><td>85.4</td><td><strong>97.0</strong><span class="delta up">0.4&uarr;</span></td><td>96.4<span class="delta down">0.2&darr;</span></td><td>90.2<span class="delta down">0.4&darr;</span></td><td><strong>76.4</strong><span class="delta up">11.0&uarr;</span></td><td>48.7</td><td><strong>68.4</strong></td><td>60.9</td><td><strong>81.8</strong></td><td>0.4</td><td><strong>3.3</strong></td></tr>
+              <tr class="table-group"><td colspan="15">HypeNet-9B</td></tr>
+              <tr><th scope="row">Pre-SFT</th><td>64.2</td><td>95.8</td><td><strong>72.4</strong></td><td><strong>67.2</strong></td><td>53.0</td><td>95.0</td><td><strong>83.8</strong></td><td><strong>52.0</strong></td><td>17.6</td><td>57.6</td><td>15.3</td><td>62.4</td><td>0.8</td><td>6.7</td></tr>
+              <tr><th scope="row">+ CoT-SFT</th><td>89.0</td><td>64.2</td><td>17.4</td><td>9.4</td><td>98.2</td><td>90.0</td><td>47.8</td><td>22.8</td><td><strong>39.8</strong></td><td><strong>69.5</strong></td><td><strong>62.3</strong></td><td>87.8</td><td><strong>1.2</strong></td><td><strong>10.0</strong></td></tr>
+              <tr class="ours"><th scope="row">QK-Restore <span>ours</span></th><td><strong>92.6</strong></td><td><strong>100</strong></td><td>44.0</td><td>19.6</td><td><strong>98.6</strong><span class="delta up">0.4&uarr;</span></td><td><strong>97.0</strong><span class="delta up">7.0&uarr;</span></td><td>66.4<span class="delta up">18.6&uarr;</span></td><td>42.6<span class="delta up">19.8&uarr;</span></td><td>37.6</td><td>68.4</td><td>59.3</td><td><strong>88.4</strong></td><td>0.6</td><td>3.3</td></tr>
             </tbody>
+          </table>
+        </div>
+        <p class="table-foot">Bold marks the best value within each model block. Superscripts on NIAH-Single-3 give the change against CoT-SFT. Avg@16 is the mean over 16 samples; Maj@16 the majority vote. (Paper Table 1.)</p>
+      </figure>
+      <div class="prose">
+        <p>The damage is not a property of fine-tuning in general. Swap the chain-of-thought data for Tulu-3 instruction tuning, holding the models and contexts fixed, and recall improves instead of collapsing &mdash; so the chain-of-thought objective is the cause. QK-Restore tracks the fine-tuned model closely here too, ahead at the longest context on both models, and never worse on instruction following.</p>
+      </div>
+      <figure class="figure-wide paper-figure wide-table">
+        <div class="figure-heading"><span class="figure-label">Non-CoT control &middot; Tulu-3 &middot; accuracy (%)</span><span class="figure-note">Same models, same contexts</span></div>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Non-CoT control table; scroll horizontally on narrow screens">
+          <table>
+            <thead>
+              <tr><th scope="col" rowspan="2">Method</th><th scope="colgroup" colspan="4">NIAH-Single-2</th><th scope="colgroup" colspan="4">NIAH-Single-3</th><th scope="col" rowspan="2">IFEval</th></tr>
+              <tr><th scope="col">32K</th><th scope="col">64K</th><th scope="col">128K</th><th scope="col">256K</th><th scope="col">32K</th><th scope="col">64K</th><th scope="col">128K</th><th scope="col">256K</th></tr>
+            </thead>
             <tbody>
-             <tr><th rowspan="3" class="model-cell">HypeNet-2B</th><td class="method-cell">Pre-SFT</td><td class="gsep">75.8</td><td class="best">94.0</td><td class="best">88.0</td><td class="best">56.2</td><td class="gsep">48.8</td><td>34.8</td><td>30.4</td><td>23.4</td><td class="gsep">4.7</td><td>25.4</td><td class="gsep">2.2</td><td>20.0</td><td class="gsep">0.0</td><td>0.0</td></tr>
-             <tr><td class="method-cell">+CoT-SFT</td><td class="gsep">82.2</td><td>81.8</td><td>48.4</td><td>41.8</td><td class="gsep">47.4</td><td>32.6</td><td>7.6</td><td>10.6</td><td class="gsep best">34.4</td><td>55.2</td><td class="gsep">40.8</td><td>68.1</td><td class="gsep">0.0</td><td>0.0</td></tr>
-             <tr class="ours"><td class="method-cell">+QK-Restore</td><td class="gsep best">97.6</td><td>91.2</td><td>83.2</td><td>40.8</td><td class="gsep best">56.2<sup class="delta up">8.8&uarr;</sup></td><td class="best">52.8<sup class="delta up">20.2&uarr;</sup></td><td class="best">30.8<sup class="delta up">23.2&uarr;</sup></td><td class="best">30.2<sup class="delta up">19.6&uarr;</sup></td><td class="gsep">33.7</td><td class="best">56.6</td><td class="gsep best">41.2</td><td class="best">69.0</td><td class="gsep best">0.2</td><td class="best">3.3</td></tr>
+              <tr class="table-group"><td colspan="10">HypeNet-5B</td></tr>
+              <tr><th scope="row">Pre-SFT</th><td>99.4</td><td>99.8</td><td>97.0</td><td>93.4</td><td>95.0</td><td>94.2</td><td><strong>87.2</strong></td><td>75.2</td><td>12.0</td></tr>
+              <tr><th scope="row">+ Tulu-3 SFT</th><td><strong>99.8</strong></td><td>100</td><td>99.6</td><td><strong>93.6</strong></td><td><strong>98.6</strong></td><td><strong>97.2</strong></td><td>85.4</td><td>83.8</td><td>26.6</td></tr>
+              <tr class="ours"><th scope="row">QK-Restore <span>ours</span></th><td>99.6</td><td><strong>100</strong></td><td><strong>99.8</strong></td><td>93.4</td><td>97.4</td><td>95.2</td><td>85.4</td><td><strong>85.2</strong></td><td><strong>26.6</strong></td></tr>
+              <tr class="table-group"><td colspan="10">HypeNet-9B</td></tr>
+              <tr><th scope="row">Pre-SFT</th><td>64.2</td><td>95.8</td><td>72.4</td><td>67.2</td><td>53.0</td><td>95.0</td><td>83.8</td><td>52.0</td><td>14.0</td></tr>
+              <tr><th scope="row">+ Tulu-3 SFT</th><td>86.4</td><td><strong>97.8</strong></td><td>88.2</td><td>78.4</td><td><strong>96.2</strong></td><td>96.8</td><td><strong>95.8</strong></td><td>86.8</td><td>27.2</td></tr>
+              <tr class="ours"><th scope="row">QK-Restore <span>ours</span></th><td><strong>88.2</strong></td><td>97.4</td><td><strong>92.8</strong></td><td><strong>78.6</strong></td><td>96.0</td><td><strong>97.4</strong></td><td>95.2</td><td><strong>88.2</strong></td><td><strong>29.0</strong></td></tr>
             </tbody>
+          </table>
+        </div>
+        <p class="table-foot">(Paper Table 2.)</p>
+      </figure>
+      <div class="prose">
+        <p>Finally, why both projections? Restoring Q alone or K alone recovers less than restoring them together. Restoring V instead &mdash; the component that processes rather than routes &mdash; is clearly worse, which is what the routing account predicts. Freezing Q and K during fine-tuning also trails the post-hoc transplant.</p>
+      </div>
+      <figure class="figure-wide results-table">
+        <div class="figure-heading"><span class="figure-label">HypeNet-2B ablation &middot; accuracy (%)</span><span class="figure-note">What to restore</span></div>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Ablation table; scroll horizontally on narrow screens">
+          <table>
+            <thead>
+              <tr><th scope="col" rowspan="2">Variant</th><th scope="colgroup" colspan="2">NIAH-Single-2</th><th scope="colgroup" colspan="2">NIAH-Single-3</th><th scope="col" rowspan="2">MATH500<br>Avg@16</th></tr>
+              <tr><th scope="col">64K</th><th scope="col">128K</th><th scope="col">64K</th><th scope="col">128K</th></tr>
+            </thead>
             <tbody>
-             <tr><th rowspan="3" class="model-cell">HypeNet-5B</th><td class="method-cell">Pre-SFT</td><td class="gsep">99.4</td><td>99.8</td><td class="best">97.0</td><td class="best">93.4</td><td class="gsep">95.0</td><td>94.2</td><td>87.2</td><td>75.2</td><td class="gsep">4.7</td><td>33.8</td><td class="gsep">4.1</td><td>39.5</td><td class="gsep">0.0</td><td>0.0</td></tr>
-             <tr><td class="method-cell">+CoT-SFT</td><td class="gsep">98.8</td><td>100</td><td>91.4</td><td>83.6</td><td class="gsep">96.6</td><td class="best">96.6</td><td class="best">90.6</td><td>65.4</td><td class="gsep best">49.3</td><td>67.0</td><td class="gsep best">61.3</td><td>81.4</td><td class="gsep best">0.6</td><td>0.0</td></tr>
-             <tr class="ours"><td class="method-cell">+QK-Restore</td><td class="gsep best">99.8</td><td class="best">100</td><td>96.8</td><td>85.4</td><td class="gsep best">97.0<sup class="delta up">0.4&uarr;</sup></td><td>96.4<sup class="delta down">0.2&darr;</sup></td><td>90.2<sup class="delta down">0.4&darr;</sup></td><td class="best">76.4<sup class="delta up">11.0&uarr;</sup></td><td class="gsep">48.7</td><td class="best">68.4</td><td class="gsep">60.9</td><td class="best">81.8</td><td class="gsep">0.4</td><td class="best">3.3</td></tr>
+              <tr class="ours"><th scope="row">QK-Restore <span>ours</span></th><td>91.2</td><td><strong>83.2</strong></td><td><strong>52.8</strong></td><td><strong>30.8</strong></td><td>33.7</td></tr>
+              <tr><th scope="row">QK-Pro (Procrustes)</th><td><strong>94.0</strong></td><td>79.0</td><td>51.8</td><td>26.0</td><td><strong>34.2</strong></td></tr>
+              <tr><th scope="row">Q only</th><td>78.4</td><td>79.0</td><td>50.8</td><td>24.4</td><td><strong>34.2</strong></td></tr>
+              <tr><th scope="row">K only</th><td>90.4</td><td>71.6</td><td>46.2</td><td>13.2</td><td><strong>34.2</strong></td></tr>
+              <tr><th scope="row">V only</th><td>57.2</td><td>36.6</td><td>24.0</td><td>15.2</td><td>32.1</td></tr>
+              <tr><th scope="row">Q/K frozen during SFT</th><td>90.6</td><td>76.4</td><td>49.4</td><td>23.6</td><td>33.1</td></tr>
             </tbody>
-            <tbody>
-             <tr><th rowspan="3" class="model-cell">HypeNet-9B</th><td class="method-cell">Pre-SFT</td><td class="gsep">64.2</td><td>95.8</td><td class="best">72.4</td><td class="best">67.2</td><td class="gsep">53.0</td><td>95.0</td><td class="best">83.8</td><td class="best">52.0</td><td class="gsep">17.6</td><td>57.6</td><td class="gsep">15.3</td><td>62.4</td><td class="gsep">0.8</td><td>6.7</td></tr>
-             <tr><td class="method-cell">+CoT-SFT</td><td class="gsep">89.0</td><td>64.2</td><td>17.4</td><td>9.4</td><td class="gsep">98.2</td><td>90.0</td><td>47.8</td><td>22.8</td><td class="gsep best">39.8</td><td class="best">69.5</td><td class="gsep best">62.3</td><td>87.8</td><td class="gsep best">1.2</td><td class="best">10.0</td></tr>
-             <tr class="ours"><td class="method-cell">+QK-Restore</td><td class="gsep best">92.6</td><td class="best">100</td><td>44.0</td><td>19.6</td><td class="gsep best">98.6<sup class="delta up">0.4&uarr;</sup></td><td class="best">97.0<sup class="delta up">7.0&uarr;</sup></td><td>66.4<sup class="delta up">18.6&uarr;</sup></td><td>42.6<sup class="delta up">19.8&uarr;</sup></td><td class="gsep">37.6</td><td>68.4</td><td class="gsep">59.3</td><td class="best">88.4</td><td class="gsep">0.6</td><td>3.3</td></tr>
-            </tbody>
-            </table>
-          </div>
-          <p class="table-note has-text-left">
-            Avg@16: mean accuracy over 16 samples. Maj@16: majority vote over the same 16 samples.
-          </p>
+          </table>
+        </div>
+        <p class="table-foot">QK-Pro enforces the pre-SFT rotation while staying as close as possible to the post-SFT weights: it gains 0.5 points on MATH500 but loses 4.8 points of NIAH-Single-3 recall at 128K. (Paper Table 4.)</p>
+      </figure>
+    </section>
+
+    <section id="takeaways" class="article-section last-section" aria-labelledby="takeaways-title">
+      <div class="prose">
+        <p class="section-kicker">05 / Discussion</p>
+        <h2 id="takeaways-title">Adapt the processing. Preserve the routing.</h2>
+        <p>Hybrid architectures concentrate a specific capability &mdash; long-range retrieval &mdash; in a small set of weights, and chain-of-thought fine-tuning does not know to leave them alone. Because the damage is localized, the repair can be localized too, and it costs nothing to apply.</p>
+        <p>Two caveats are worth stating plainly. QK-Restore needs the <strong>matched pre-SFT checkpoint</strong>, so it is available to whoever trained the model, not to a downstream user of the weights alone. And the repair is not free everywhere: on HypeNet-9B it gives up 2.2 points of MATH500 Avg@16 and 3.0 on GSM8K, against 0.6 and 0.4 on HypeNet-5B.</p>
+        <p>The broader question this leaves open is whether routing can be protected <em>during</em> fine-tuning rather than restored after it. Our frozen-Q/K ablation suggests the naive version of that is not enough.</p>
+        <div class="closing-note">
+          <img class="closing-mark" src="static/images/favicon.svg" alt="" width="34" height="34">
+          <p>A model that learns to think<br>should not have to forget where it read.</p>
+        </div>
+        <div class="citation">
+          <p class="section-kicker">Citation</p>
+          <pre class="citation-code" tabindex="0" role="region" aria-label="BibTeX citation"><code>@article{zhou2026attention,
+  title={Attention Amnesia in Hybrid LLMs: When CoT Fine-Tuning Breaks Long-Range Recall, and How to Fix It},
+  author={Zhou, Xinyu and Zhu, Boyu and Xu, Yi and Li, Zhiwei and Chen, Yingfa and Wang, Huiming and Guo, Zhijiang},
+  journal={arXiv preprint arXiv:2606.11052},
+  year={2026}
+}</code></pre>
         </div>
       </div>
-    </div>
-  </section>
-
-  <!-- Non-CoT control -->
-  <section class="section">
-    <div class="container is-max-desktop">
-      <div class="columns is-centered">
-        <div class="column is-11 has-text-centered">
-          <h2 class="title is-3 section-title">The Objective Is the Cause</h2>
-          <div class="content has-text-justified">
-            <p>
-              Swapping the CoT data for Tulu-3 instruction tuning, with the same models and the same contexts, recall
-              does <em>not</em> collapse &mdash; it improves. The damage comes from the chain-of-thought objective, not
-              from fine-tuning as such. QK-Restore tracks the fine-tuned model closely here: ahead at the longest context
-              (+1.4 points of NIAH-Single-3 at 256K on both models), within about two points elsewhere, and never worse
-              on instruction following (IFEval 26.6 vs. 26.6 and 29.0 vs. 27.2).
-            </p>
-          </div>
-          <div class="table-scroll">
-            <table class="qk-table">
-              <thead>
-                <tr>
-                  <th rowspan="2">Model</th>
-                  <th rowspan="2">Method</th>
-                  <th colspan="4" class="gsep">NIAH-Single-2</th>
-                  <th colspan="4" class="gsep">NIAH-Single-3</th>
-                  <th rowspan="2" class="gsep">IFEval</th>
-                </tr>
-                <tr class="sub-row">
-                  <th class="gsep">32K</th><th>64K</th><th>128K</th><th>256K</th>
-                  <th class="gsep">32K</th><th>64K</th><th>128K</th><th>256K</th>
-                </tr>
-              </thead>
-            <tbody>
-             <tr><th rowspan="3" class="model-cell">HypeNet-5B</th><td class="method-cell">Pre-SFT</td><td class="gsep">99.4</td><td>99.8</td><td>97.0</td><td>93.4</td><td class="gsep">95.0</td><td>94.2</td><td class="best">87.2</td><td>75.2</td><td class="gsep">12.0</td></tr>
-             <tr><td class="method-cell">+Tulu-3 SFT</td><td class="gsep best">99.8</td><td>100</td><td>99.6</td><td class="best">93.6</td><td class="gsep best">98.6</td><td class="best">97.2</td><td>85.4</td><td>83.8</td><td class="gsep">26.6</td></tr>
-             <tr class="ours"><td class="method-cell">+QK-Restore</td><td class="gsep">99.6</td><td class="best">100</td><td class="best">99.8</td><td>93.4</td><td class="gsep">97.4</td><td>95.2</td><td>85.4</td><td class="best">85.2</td><td class="gsep best">26.6</td></tr>
-            </tbody>
-            <tbody>
-             <tr><th rowspan="3" class="model-cell">HypeNet-9B</th><td class="method-cell">Pre-SFT</td><td class="gsep">64.2</td><td>95.8</td><td>72.4</td><td>67.2</td><td class="gsep">53.0</td><td>95.0</td><td>83.8</td><td>52.0</td><td class="gsep">14.0</td></tr>
-             <tr><td class="method-cell">+Tulu-3 SFT</td><td class="gsep">86.4</td><td class="best">97.8</td><td>88.2</td><td>78.4</td><td class="gsep best">96.2</td><td>96.8</td><td class="best">95.8</td><td>86.8</td><td class="gsep">27.2</td></tr>
-             <tr class="ours"><td class="method-cell">+QK-Restore</td><td class="gsep best">88.2</td><td>97.4</td><td class="best">92.8</td><td class="best">78.6</td><td class="gsep">96.0</td><td class="best">97.4</td><td>95.2</td><td class="best">88.2</td><td class="gsep best">29.0</td></tr>
-            </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Ablation -->
-  <section class="section">
-    <div class="container is-max-desktop">
-      <div class="columns is-centered">
-        <div class="column is-11 has-text-centered">
-          <h2 class="title is-3 section-title">Why Restore Q and K Together?</h2>
-          <div class="content has-text-justified">
-            <p>
-              HypeNet-2B ablation, accuracy (%). Restoring Q alone or K alone recovers less; restoring V instead of Q/K
-              &mdash; the components that process rather than route &mdash; is clearly worse, which is what the routing
-              account predicts. Freezing Q/K during SFT (QK-Frozen) also trails the post-hoc transplant.
-            </p>
-          </div>
-          <div class="table-scroll">
-            <table class="qk-table">
-              <thead>
-                <tr>
-                  <th rowspan="2">Method</th>
-                  <th colspan="2" class="gsep">NIAH-Single-2</th>
-                  <th colspan="2" class="gsep">NIAH-Single-3</th>
-                  <th rowspan="2" class="gsep">MATH500 Avg@16</th>
-                </tr>
-                <tr class="sub-row">
-                  <th class="gsep">64K</th><th>128K</th>
-                  <th class="gsep">64K</th><th>128K</th>
-                </tr>
-              </thead>
-              <tbody>
-            <tr class="ours"><td class="method-cell">QK-Restore</td><td class="gsep">91.2</td><td class="best">83.2</td><td class="gsep best">52.8</td><td class="best">30.8</td><td class="gsep">33.7</td></tr>
-            <tr><td class="method-cell">QK-Pro</td><td class="gsep best">94.0</td><td>79.0</td><td class="gsep">51.8</td><td>26.0</td><td class="gsep best">34.2</td></tr>
-            <tr><td class="method-cell">Q-Restore</td><td class="gsep">78.4</td><td>79.0</td><td class="gsep">50.8</td><td>24.4</td><td class="gsep best">34.2</td></tr>
-            <tr><td class="method-cell">K-Restore</td><td class="gsep">90.4</td><td>71.6</td><td class="gsep">46.2</td><td>13.2</td><td class="gsep best">34.2</td></tr>
-            <tr><td class="method-cell">V-Restore</td><td class="gsep">57.2</td><td>36.6</td><td class="gsep">24.0</td><td>15.2</td><td class="gsep">32.1</td></tr>
-            <tr><td class="method-cell">QK-Frozen</td><td class="gsep">90.6</td><td>76.4</td><td class="gsep">49.4</td><td>23.6</td><td class="gsep">33.1</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <p class="table-note has-text-left">
-            QK-Pro is the Procrustes variant: it enforces the pre-SFT rotation while staying as close as possible to the
-            post-SFT weights. It gains 0.5 points on MATH500 but loses 4.8 points of NIAH-Single-3 recall at 128K.
-          </p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Citation -->
-  <section class="section" id="BibTeX">
-    <div class="container is-max-desktop content">
-      <h2 class="title">Citation</h2>
-      <p>
-        If you find our work helpful, please consider citing:
-      <pre><code>
-          @article{zhou2026attention,
-            title={Attention Amnesia in Hybrid LLMs: When CoT Fine-Tuning Breaks Long-Range Recall, and How to Fix It},
-            author={Zhou, Xinyu and Zhu, Boyu and Xu, Yi and Li, Zhiwei and Chen, Yingfa and Wang, Huiming and Guo, Zhijiang},
-            journal={arXiv preprint arXiv:2606.11052},
-            year={2026}
-          }
-        </code></pre>
-      </p>
-    </div>
-  </section>
-
-  <footer class="footer">
-    <div class="container">
-      <div class="columns is-centered">
-        <div class="column is-8">
-          <div class="content">
-            <p>
-              The source code from this website is borrowed from <a
-                href="https://github.com/LiveCodeBench/livecodebench.github.io">livecodebench.github.io</a>.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </footer>
+    </section>
+  </main>
+  <footer class="site-footer prose"><a class="footer-brand" href="#top">QK-Restore <span>&#8599;</span></a><p>Attention Amnesia in Hybrid LLMs &middot; EMNLP 2026</p></footer>
 </body>
-
 </html>

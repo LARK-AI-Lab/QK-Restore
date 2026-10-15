@@ -1,0 +1,35 @@
+/* QK-Restore additions on top of the shared article stylesheet.
+   Only components the base sheet does not already provide. */
+
+/* Numbered recipe, set like the prose it sits in. */
+.recipe { counter-reset: step; list-style: none; margin: 26px 0 28px; padding: 0; }
+.recipe li { counter-increment: step; position: relative; padding-left: 44px; margin-bottom: 14px; }
+.recipe li:before {
+  content: counter(step);
+  position: absolute; left: 0; top: 2px;
+  width: 27px; height: 27px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent-soft); color: #9e4f32;
+  font: 600 13px/1 var(--sans);
+}
+.recipe li:last-child { margin-bottom: 0; }
+
+/* Cost of the method, in the register of .result-summary but quieter. */
+.cost-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin: 30px 0 10px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.cost-row > div { background: var(--paper); padding: 18px 20px; }
+.cost-number { display: block; font: 500 30px/1.2 var(--serif); letter-spacing: -.04em; color: var(--sage); }
+.cost-label { display: block; font-size: 12px; line-height: 1.6; color: var(--muted); margin-top: 7px; }
+
+/* Wide result tables: the main one carries 16 columns. */
+.wide-table table { min-width: 820px; font-size: 11.5px; }
+.wide-table th, .wide-table td { padding: 9px 6px; }
+.table-foot { font-size: 12px; line-height: 1.8; color: var(--muted); padding: 0 26px 20px; margin: 0; }
+tbody .delta { font-size: 9px; font-weight: 600; margin-left: 2px; vertical-align: super; }
+tbody .delta.up { color: var(--sage); }
+tbody .delta.down { color: #a9553c; }
+.ours td strong { font-weight: 650; }
+
+@media (max-width: 859px) {
+  .cost-row { grid-template-columns: minmax(0, 1fr); }
+  .table-foot { padding-inline: 18px; }
+}
